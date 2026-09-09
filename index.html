@@ -10,11 +10,11 @@
     <!-- SDKs de Firebase (v10) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
         // ==========================================================
-        // ⚠️ PEGA AQUÍ TUS CREDENCIALES DE FIREBASE (Paso 1)
+        // ⚠️ TUS CREDENCIALES DE FIREBASE (Ya configuradas)
         // ==========================================================
         const firebaseConfig = {
             apiKey: "TU_API_KEY",
@@ -25,16 +25,17 @@
             appId: "TU_APP_ID"
         };
 
-        // Inicializar Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const storage = getStorage(app);
 
-        // Hacer globales las funciones para usarlas en el HTML
+        // Estado global del usuario logueado en la sesión
+        let usuarioActual = null;
+
         window.registrarClienteCloud = async function(e) {
             e.preventDefault();
             const btn = document.getElementById('btnRegCli');
-            btn.textContent = "Registrando en la nube...";
+            btn.textContent = "Registrando...";
             btn.disabled = true;
 
             try {
@@ -47,13 +48,18 @@
                     creado: new Date().toISOString()
                 };
 
-                await addDoc(collection(db, "clientes"), cliente);
-                alert('¡Cuenta de cliente creada exitosamente en la nube global!');
+                const docRef = await addDoc(collection(db, "clientes"), cliente);
+                cliente.id = docRef.id;
+                usuarioActual = cliente;
+                localStorage.setItem('cortate_sesion', JSON.stringify(usuarioActual));
+
+                alert('¡Cuenta de cliente creada exitosamente!');
                 document.getElementById('formCliente').reset();
-                window.navegarApp('home');
+                window.actualizarInterfazPerfil();
+                window.navegarApp('perfil');
             } catch (error) {
-                console.error("Error al registrar cliente:", error);
-                alert("Hubo un error al registrarse. Revisa la consola.");
+                console.error("Error:", error);
+                alert("Error al registrarse.");
             } finally {
                 btn.textContent = "Crear Cuenta de Cliente";
                 btn.disabled = false;
@@ -63,7 +69,7 @@
         window.registrarBarberoCloud = async function(e) {
             e.preventDefault();
             const btn = document.getElementById('btnRegBar');
-            btn.textContent = "Subiendo archivos y registrando...";
+            btn.textContent = "Subiendo y registrando...";
             btn.disabled = true;
 
             try {
@@ -71,7 +77,6 @@
                 let pdfUrl = "";
 
                 if (pdfFile) {
-                    // Subir PDF de antecedentes a Firebase Storage
                     const storageRef = ref(storage, `antecedentes/${Date.now()}_${pdfFile.name}`);
                     const snapshot = await uploadBytes(storageRef, pdfFile);
                     pdfUrl = await getDownloadURL(snapshot.ref);
@@ -88,17 +93,131 @@
                     creado: new Date().toISOString()
                 };
 
-                // Guardar datos en la base de datos de Firestore
-                await addDoc(collection(db, "barberos"), barbero);
-                alert('¡Barbero registrado con éxito en la nube! Tus antecedentes están guardados de forma segura.');
+                const docRef = await addDoc(collection(db, "barberos"), barbero);
+                barbero.id = docRef.id;
+                usuarioActual = barbero;
+                localStorage.setItem('cortate_sesion', JSON.stringify(usuarioActual));
+
+                alert('¡Barbero registrado con éxito!');
                 document.getElementById('formBarbero').reset();
-                window.navegarApp('home');
+                window.actualizarInterfazPerfil();
+                window.navegarApp('perfil');
             } catch (error) {
-                console.error("Error al registrar barbero:", error);
-                alert("Error al registrar barbero. Verifica tu conexión.");
+                console.error("Error:", error);
+                alert("Error al registrar barbero.");
             } finally {
                 btn.textContent = "Unirme como Barbero";
                 btn.disabled = false;
+            }
+        };
+
+        window.loginUsuario = async function(e) {
+            e.preventDefault();
+            const contacto = document.getElementById('loginContacto').value.trim();
+            const password = document.getElementById('loginPassword').value.trim();
+            const tipo = document.getElementById('loginTipo').value;
+
+            try {
+                const q = query(collection(db, tipo === 'barbero' ? 'barberos' : 'clientes'), where("contacto", "==", contacto));
+                const querySnapshot = await getDocs(q);
+
+                if (querySnapshot.empty) {
+                    alert("Usuario no encontrado con ese dato de contacto.");
+                    return;
+                }
+
+                let encontrado = null;
+                querySnapshot.forEach((docSnap) => {
+                    let data = docSnap.data();
+                    if (data.password === password) {
+                        encontrado = { id: docSnap.id, ...data };
+                    }
+                });
+
+                if (!encontrado) {
+                    alert("Contraseña incorrecta.");
+                    return;
+                }
+
+                usuarioActual = encontrado;
+                localStorage.setItem('cortate_sesion', JSON.stringify(usuarioActual));
+                alert(`¡Bienvenido de nuevo, ${usuarioActual.nombre}!`);
+                window.actualizarInterfazPerfil();
+            } catch (error) {
+                console.error("Error de login:", error);
+                alert("Error al iniciar sesión.");
+            }
+        };
+
+        window.guardarCambiosPerfil = async function(e) {
+            e.preventDefault();
+            if (!usuarioActual) return;
+
+            const colName = usuarioActual.tipo === 'barbero' ? 'barberos' : 'clientes';
+            const docRef = doc(db, colName, usuarioActual.id);
+
+            try {
+                usuarioActual.nombre = document.getElementById('editNombre').value;
+                usuarioActual.contacto = document.getElementById('editContacto').value;
+                usuarioActual.direccion = document.getElementById('editDireccion').value;
+                
+                const nuevaPass = document.getElementById('editPassword').value;
+                if (nuevaPass) {
+                    usuarioActual.password = nuevaPass;
+                }
+
+                if (usuarioActual.tipo === 'barbero') {
+                    usuarioActual.portfolio = document.getElementById('editPortfolio').value;
+                }
+
+                await updateDoc(docRef, usuarioActual);
+                localStorage.setItem('cortate_sesion', JSON.stringify(usuarioActual));
+                alert("¡Perfil actualizado correctamente!");
+                window.actualizarInterfazPerfil();
+            } catch (error) {
+                console.error("Error actualizando:", error);
+                alert("Error al guardar cambios.");
+            }
+        };
+
+        window.cerrarSesion = function() {
+            usuarioActual = null;
+            localStorage.removeItem('cortate_sesion');
+            window.actualizarInterfazPerfil();
+            alert("Sesión cerrada.");
+        };
+
+        window.actualizarInterfazPerfil = function() {
+            const loginBox = document.getElementById('loginBox');
+            const editBox = document.getElementById('editBox');
+            const infoText = document.getElementById('perfilInfoText');
+
+            // Verificar si hay sesión guardada en localStorage
+            if (!usuarioActual && localStorage.getItem('cortate_sesion')) {
+                usuarioActual = JSON.parse(localStorage.getItem('cortate_sesion'));
+            }
+
+            if (usuarioActual) {
+                loginBox.style.display = 'none';
+                editBox.style.display = 'block';
+                infoText.innerHTML = `Conectado como: <b>${usuarioActual.nombre}</b> (${usuarioActual.tipo.toUpperCase()})`;
+
+                document.getElementById('editNombre').value = usuarioActual.nombre || '';
+                document.getElementById('editContacto').value = usuarioActual.contacto || '';
+                document.getElementById('editDireccion').value = usuarioActual.direccion || '';
+                document.getElementById('editPassword').value = '';
+
+                const portfolioGroup = document.getElementById('editPortfolioGroup');
+                if (usuarioActual.tipo === 'barbero') {
+                    portfolioGroup.style.display = 'block';
+                    document.getElementById('editPortfolio').value = usuarioActual.portfolio || '';
+                } else {
+                    portfolioGroup.style.display = 'none';
+                }
+            } else {
+                loginBox.style.display = 'block';
+                editBox.style.display = 'none';
+                infoText.innerHTML = "Inicia sesión para editar tu perfil o cambiar contraseña.";
             }
         };
 
@@ -111,7 +230,7 @@
                 contenedor.innerHTML = '';
 
                 if (querySnapshot.empty) {
-                    contenedor.innerHTML = '<p style="text-align: center; color: var(--text-muted); grid-column: 1/-1;">No hay barberos registrados en la plataforma todavía. ¡Sé el primero!</p>';
+                    contenedor.innerHTML = '<p style="text-align: center; color: var(--text-muted); grid-column: 1/-1;">No hay barberos registrados todavía. ¡Sé el primero!</p>';
                     return;
                 }
 
@@ -130,20 +249,20 @@
                         <div class="barber-body">
                             <p>📞 Contacto: ${b.contacto}</p>
                             ${b.pdfUrl ? `<p style="margin-top: 4px;"><a href="${b.pdfUrl}" target="_blank" style="color: var(--gold); font-size: 0.8rem; text-decoration: underline;">📄 Ver Certificado de Antecedentes Verificado</a></p>` : ''}
-                            <button class="primary-btn" style="margin-top: 12px; padding: 0.7rem; font-size: 0.85rem;" onclick="alert('Solicitud enviada a ${b.nombre}. Se pondrá en contacto por WhatsApp o llamada.')">Solicitar Servicio a Domicilio</button>
+                            <button class="primary-btn" style="margin-top: 12px; padding: 0.7rem; font-size: 0.85rem;" onclick="alert('Solicitud enviada a ${b.nombre}. Se pondrá en contacto pronto.')">Solicitar Servicio a Domicilio</button>
                         </div>
                     `;
                     contenedor.appendChild(card);
                 });
             } catch (error) {
                 console.error("Error cargando barberos:", error);
-                contenedor.innerHTML = '<p style="text-align: center; color: var(--danger);">Error al conectar con la base de datos en la nube.</p>';
+                contenedor.innerHTML = '<p style="text-align: center; color: var(--danger);">Error al conectar con la base de datos.</p>';
             }
         };
 
-        // Cargar al iniciar la app
         window.onload = function() {
             window.cargarBarberosCloud();
+            window.actualizarInterfazPerfil();
         };
     </script>
 
@@ -223,7 +342,7 @@
             font-size: 1.4rem;
         }
 
-        .search-box-mobile {
+        .search-box-mobile, .form-box-mobile {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
             border-radius: 12px;
@@ -267,9 +386,17 @@
             letter-spacing: 0.5px;
         }
 
-        button.primary-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
+        button.danger-btn {
+            background: #8B0000;
+            color: #fff;
+            border: none;
+            font-weight: 600;
+            padding: 0.8rem;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 0.9rem;
+            margin-top: 10px;
         }
 
         .barbers-feed {
@@ -353,6 +480,7 @@
             color: #000;
         }
 
+        /* Barra de navegación inferior móvil */
         nav.bottom-nav {
             position: fixed;
             bottom: 0;
@@ -418,8 +546,64 @@
             </div>
 
             <h2>Barberos Globales Disponibles</h2>
-            <div id="listaBarberos" class="barbers-feed">
-                <!-- Se cargará dinámicamente desde Firestore -->
+            <div id="listaBarberos" class="barbers-feed"></div>
+        </section>
+
+        <!-- VISTA MI PERFIL (NUEVA SECCIÓN CENTRAL) -->
+        <section id="perfil" class="view">
+            <h1>Gestión de Perfil</h1>
+            <p id="perfilInfoText" style="color: var(--gold-light); font-size: 0.85rem; margin-bottom: 1rem; text-align: center;"></p>
+
+            <!-- CONTENEDOR DE LOGIN SI NO ESTÁ LOGUEADO -->
+            <div id="loginBox" class="form-box-mobile">
+                <h3 style="color: var(--gold); margin-bottom: 1rem; font-size: 1.1rem;">Iniciar Sesión</h3>
+                <form onsubmit="window.loginUsuario(event)">
+                    <div class="input-group-mobile">
+                        <label style="color: var(--gold); font-size: 0.85rem;">Tipo de Usuario</label>
+                        <select id="loginTipo">
+                            <option value="cliente">Cliente</option>
+                            <option value="barbero">Barbero</option>
+                        </select>
+                    </div>
+                    <div class="input-group-mobile">
+                        <label style="color: var(--gold); font-size: 0.85rem;">Teléfono / Contacto</label>
+                        <input type="text" id="loginContacto" required placeholder="Tu teléfono registrado">
+                    </div>
+                    <div class="input-group-mobile">
+                        <label style="color: var(--gold); font-size: 0.85rem;">Contraseña</label>
+                        <input type="password" id="loginPassword" required placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="primary-btn" style="margin-top: 0.5rem;">Entrar a mi cuenta</button>
+                </form>
+            </div>
+
+            <!-- CONTENEDOR DE EDICIÓN DE PERFIL SI YA ESTÁ LOGUEADO -->
+            <div id="editBox" class="form-box-mobile" style="display: none;">
+                <h3 style="color: var(--gold); margin-bottom: 1rem; font-size: 1.1rem;">Editar Mis Datos</h3>
+                <form onsubmit="window.guardarCambiosPerfil(event)">
+                    <div class="input-group-mobile">
+                        <label style="color: var(--gold); font-size: 0.85rem;">Nombre de Usuario / Marca</label>
+                        <input type="text" id="editNombre" required>
+                    </div>
+                    <div class="input-group-mobile">
+                        <label style="color: var(--gold); font-size: 0.85rem;">Teléfono de Contacto</label>
+                        <input type="text" id="editContacto" required>
+                    </div>
+                    <div class="input-group-mobile">
+                        <label style="color: var(--gold); font-size: 0.85rem;">Dirección / Zona</label>
+                        <input type="text" id="editDireccion" required>
+                    </div>
+                    <div class="input-group-mobile" id="editPortfolioGroup">
+                        <label style="color: var(--gold); font-size: 0.85rem;">URL de Foto de Portafolio</label>
+                        <input type="url" id="editPortfolio" placeholder="https://link-de-tu-foto.jpg">
+                    </div>
+                    <div class="input-group-mobile">
+                        <label style="color: var(--gold); font-size: 0.85rem;">Nueva Contraseña (Opcional)</label>
+                        <input type="password" id="editPassword" placeholder="Déjalo en blanco para no cambiarla">
+                    </div>
+                    <button type="submit" class="primary-btn" style="margin-top: 0.5rem;">Guardar Cambios</button>
+                </form>
+                <button class="danger-btn" onclick="window.cerrarSesion()">Cerrar Sesión</button>
             </div>
         </section>
 
@@ -433,7 +617,7 @@
             </div>
 
             <!-- FORMULARIO CLIENTE -->
-            <form id="formCliente" onsubmit="window.registrarClienteCloud(event)">
+            <form id="formCliente" onsubmit="window.registrarClienteCloud(event)" class="form-box-mobile">
                 <div class="input-group-mobile">
                     <label style="color: var(--gold); font-size: 0.85rem;">Nombre y Apellido</label>
                     <input type="text" id="cliNombre" required placeholder="Ej. Lucas Gómez">
@@ -454,7 +638,7 @@
             </form>
 
             <!-- FORMULARIO BARBERO -->
-            <form id="formBarbero" onsubmit="window.registrarBarberoCloud(event)" style="display: none;">
+            <form id="formBarbero" onsubmit="window.registrarBarberoCloud(event)" class="form-box-mobile" style="display: none;">
                 <div class="input-group-mobile">
                     <label style="color: var(--gold); font-size: 0.85rem;">Nombre Artístico / Marca</label>
                     <input type="text" id="barNombre" required placeholder="Ej. Fade Master Studio">
@@ -474,7 +658,7 @@
                     </div>
                 </div>
                 <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Link de Portafolio (Foto de corte URL)</label>
+                    <label style="color: var(--gold); font-size: 0.85rem;">Link de Portafolio (Foto URL)</label>
                     <input type="url" id="barPortfolio" required placeholder="https://link-a-tu-foto.jpg">
                 </div>
                 <div class="input-group-mobile">
@@ -486,15 +670,19 @@
         </section>
     </main>
 
-    <!-- BARRA DE NAVEGACIÓN INFERIOR -->
+    <!-- BARRA DE NAVEGACIÓN INFERIOR CON 3 PESTAÑAS -->
     <nav class="bottom-nav">
         <button class="nav-item active" id="navHome" onclick="navegarApp('home')">
             <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
             Explorar
         </button>
+        <button class="nav-item" id="navPerfil" onclick="navegarApp('perfil')">
+            <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            Mi Perfil
+        </button>
         <button class="nav-item" id="navRegistro" onclick="navegarApp('registro')">
             <svg viewBox="0 0 24 24"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-            Registro / Cuenta
+            Registro
         </button>
     </nav>
 
@@ -509,6 +697,9 @@
             window.scrollTo(0, 0);
             if(vistaId === 'home') {
                 window.cargarBarberosCloud();
+            }
+            if(vistaId === 'perfil') {
+                window.actualizarInterfazPerfil();
             }
         }
 
