@@ -3,19 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cortate - Barberos a Domicilio</title>
+    <title>Cortate - Barberos y Barberías a Domicilio</title>
+    
+    <!-- PWA Manifest & Meta -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#d4af37">
+    <link rel="apple-touch-icon" href="https://via.placeholder.com/192x192?text=C">
+
     <!-- Fuentes elegantes -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
     
     <!-- SDKs de Firebase (v10) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, query, where, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-        // ==========================================================
-        // ⚠️ TUS CREDENCIALES DE FIREBASE (Ya configuradas)
-        // ==========================================================
         const firebaseConfig = {
             apiKey: "TU_API_KEY",
             authDomain: "tu-proyecto.firebaseapp.com",
@@ -29,84 +32,88 @@
         const db = getFirestore(app);
         const storage = getStorage(app);
 
-        // Estado global del usuario logueado en la sesión
         let usuarioActual = null;
 
-        window.registrarClienteCloud = async function(e) {
-            e.preventDefault();
-            const btn = document.getElementById('btnRegCli');
-            btn.textContent = "Registrando...";
-            btn.disabled = true;
-
+        // Sembrar datos de muestra si la colección está vacía
+        window.inicializarDatosMuestra = async function() {
             try {
-                const cliente = {
-                    nombre: document.getElementById('cliNombre').value,
-                    contacto: document.getElementById('cliContacto').value,
-                    direccion: document.getElementById('cliDireccion').value,
-                    password: document.getElementById('cliPassword').value,
-                    tipo: 'cliente',
-                    creado: new Date().toISOString()
-                };
+                const querySnapshot = await getDocs(collection(db, "barberos"));
+                if (querySnapshot.empty) {
+                    // Crear barbero de muestra
+                    await addDoc(collection(db, "barberos"), {
+                        nombre: "Carlos 'Fade' Gómez",
+                        contacto: "+5491112345678",
+                        direccion: "Palermo Soho, CABA",
+                        distanciaMinutos: 12,
+                        estrellas: 4.8,
+                        portfolio: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=500&auto=format&fit=crop&q=60",
+                        password: "123",
+                        tipo: "barbero",
+                        creado: new Date().toISOString()
+                    });
 
-                const docRef = await addDoc(collection(db, "clientes"), cliente);
-                cliente.id = docRef.id;
-                usuarioActual = cliente;
-                localStorage.setItem('cortate_sesion', JSON.stringify(usuarioActual));
-
-                alert('¡Cuenta de cliente creada exitosamente!');
-                document.getElementById('formCliente').reset();
-                window.actualizarInterfazPerfil();
-                window.navegarApp('perfil');
-            } catch (error) {
-                console.error("Error:", error);
-                alert("Error al registrarse.");
-            } finally {
-                btn.textContent = "Crear Cuenta de Cliente";
-                btn.disabled = false;
+                    // Crear barbería de muestra
+                    await addDoc(collection(db, "barberos"), {
+                        nombre: "The Gentleman Club Barbería",
+                        contacto: "+5491198765432",
+                        direccion: "Belgrano R, CABA",
+                        distanciaMinutos: 18,
+                        estrellas: 5.0,
+                        portfolio: "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=500&auto=format&fit=crop&q=60",
+                        password: "123",
+                        tipo: "barberia",
+                        creado: new Date().toISOString()
+                    });
+                }
+            } catch (e) {
+                console.error("Error inicializando datos de muestra:", e);
             }
         };
 
-        window.registrarBarberoCloud = async function(e) {
+        window.registrarUsuarioCloud = async function(e) {
             e.preventDefault();
-            const btn = document.getElementById('btnRegBar');
-            btn.textContent = "Subiendo y registrando...";
+            const tipo = document.getElementById('regTipoSelector').value;
+            const btn = document.getElementById('btnRegAccion');
+            btn.textContent = "Procesando registro...";
             btn.disabled = true;
 
             try {
-                const pdfFile = document.getElementById('barPdf').files[0];
                 let pdfUrl = "";
-
-                if (pdfFile) {
+                const pdfFile = document.getElementById('regPdf').files[0];
+                if (pdfFile && (tipo === 'barbero' || tipo === 'barberia')) {
                     const storageRef = ref(storage, `antecedentes/${Date.now()}_${pdfFile.name}`);
                     const snapshot = await uploadBytes(storageRef, pdfFile);
                     pdfUrl = await getDownloadURL(snapshot.ref);
                 }
 
-                const barbero = {
-                    nombre: document.getElementById('barNombre').value,
-                    contacto: document.getElementById('barContacto').value,
-                    direccion: document.getElementById('barDireccion').value,
-                    portfolio: document.getElementById('barPortfolio').value,
+                const nuevoUsuario = {
+                    nombre: document.getElementById('regNombre').value,
+                    contacto: document.getElementById('regContacto').value,
+                    direccion: document.getElementById('regDireccion').value,
+                    distanciaMinutos: Math.floor(Math.random() * 20) + 5, // Asignación automática inicial
+                    estrellas: 5.0,
+                    portfolio: document.getElementById('regPortfolio').value || "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=500",
                     pdfUrl: pdfUrl,
-                    password: document.getElementById('barPassword').value,
-                    tipo: 'barbero',
+                    password: document.getElementById('regPassword').value,
+                    tipo: tipo,
                     creado: new Date().toISOString()
                 };
 
-                const docRef = await addDoc(collection(db, "barberos"), barbero);
-                barbero.id = docRef.id;
-                usuarioActual = barbero;
+                const colDB = tipo === 'cliente' ? 'clientes' : 'barberos';
+                const docRef = await addDoc(collection(db, colDB), nuevoUsuario);
+                nuevoUsuario.id = docRef.id;
+                usuarioActual = nuevoUsuario;
                 localStorage.setItem('cortate_sesion', JSON.stringify(usuarioActual));
 
-                alert('¡Barbero registrado con éxito!');
-                document.getElementById('formBarbero').reset();
+                alert(`¡Registro de ${tipo} completado con éxito!`);
+                document.getElementById('formRegistroGeneral').reset();
                 window.actualizarInterfazPerfil();
                 window.navegarApp('perfil');
             } catch (error) {
-                console.error("Error:", error);
-                alert("Error al registrar barbero.");
+                console.error("Error en registro:", error);
+                alert("Ocurrió un error al registrarse.");
             } finally {
-                btn.textContent = "Unirme como Barbero";
+                btn.textContent = "Completar Registro";
                 btn.disabled = false;
             }
         };
@@ -117,12 +124,14 @@
             const password = document.getElementById('loginPassword').value.trim();
             const tipo = document.getElementById('loginTipo').value;
 
+            const targetCol = tipo === 'cliente' ? 'clientes' : 'barberos';
+
             try {
-                const q = query(collection(db, tipo === 'barbero' ? 'barberos' : 'clientes'), where("contacto", "==", contacto));
+                const q = query(collection(db, targetCol), where("contacto", "==", contacto));
                 const querySnapshot = await getDocs(q);
 
                 if (querySnapshot.empty) {
-                    alert("Usuario no encontrado con ese dato de contacto.");
+                    alert("No se encontró usuario con ese contacto.");
                     return;
                 }
 
@@ -144,7 +153,7 @@
                 alert(`¡Bienvenido de nuevo, ${usuarioActual.nombre}!`);
                 window.actualizarInterfazPerfil();
             } catch (error) {
-                console.error("Error de login:", error);
+                console.error("Error login:", error);
                 alert("Error al iniciar sesión.");
             }
         };
@@ -153,7 +162,7 @@
             e.preventDefault();
             if (!usuarioActual) return;
 
-            const colName = usuarioActual.tipo === 'barbero' ? 'barberos' : 'clientes';
+            const colName = usuarioActual.tipo === 'cliente' ? 'clientes' : 'barberos';
             const docRef = doc(db, colName, usuarioActual.id);
 
             try {
@@ -162,17 +171,15 @@
                 usuarioActual.direccion = document.getElementById('editDireccion').value;
                 
                 const nuevaPass = document.getElementById('editPassword').value;
-                if (nuevaPass) {
-                    usuarioActual.password = nuevaPass;
-                }
+                if (nuevaPass) usuarioActual.password = nuevaPass;
 
-                if (usuarioActual.tipo === 'barbero') {
+                if (usuarioActual.tipo !== 'cliente') {
                     usuarioActual.portfolio = document.getElementById('editPortfolio').value;
                 }
 
                 await updateDoc(docRef, usuarioActual);
                 localStorage.setItem('cortate_sesion', JSON.stringify(usuarioActual));
-                alert("¡Perfil actualizado correctamente!");
+                alert("¡Perfil actualizado con éxito!");
                 window.actualizarInterfazPerfil();
             } catch (error) {
                 console.error("Error actualizando:", error);
@@ -184,7 +191,7 @@
             usuarioActual = null;
             localStorage.removeItem('cortate_sesion');
             window.actualizarInterfazPerfil();
-            alert("Sesión cerrada.");
+            alert("Sesión cerrada correctamente.");
         };
 
         window.actualizarInterfazPerfil = function() {
@@ -192,7 +199,6 @@
             const editBox = document.getElementById('editBox');
             const infoText = document.getElementById('perfilInfoText');
 
-            // Verificar si hay sesión guardada en localStorage
             if (!usuarioActual && localStorage.getItem('cortate_sesion')) {
                 usuarioActual = JSON.parse(localStorage.getItem('cortate_sesion'));
             }
@@ -200,7 +206,7 @@
             if (usuarioActual) {
                 loginBox.style.display = 'none';
                 editBox.style.display = 'block';
-                infoText.innerHTML = `Conectado como: <b>${usuarioActual.nombre}</b> (${usuarioActual.tipo.toUpperCase()})`;
+                infoText.innerHTML = `Sesión activa: <b>${usuarioActual.nombre}</b> (${usuarioActual.tipo.toUpperCase()})`;
 
                 document.getElementById('editNombre').value = usuarioActual.nombre || '';
                 document.getElementById('editContacto').value = usuarioActual.contacto || '';
@@ -208,7 +214,7 @@
                 document.getElementById('editPassword').value = '';
 
                 const portfolioGroup = document.getElementById('editPortfolioGroup');
-                if (usuarioActual.tipo === 'barbero') {
+                if (usuarioActual.tipo !== 'cliente') {
                     portfolioGroup.style.display = 'block';
                     document.getElementById('editPortfolio').value = usuarioActual.portfolio || '';
                 } else {
@@ -217,56 +223,71 @@
             } else {
                 loginBox.style.display = 'block';
                 editBox.style.display = 'none';
-                infoText.innerHTML = "Inicia sesión para editar tu perfil o cambiar contraseña.";
+                infoText.innerHTML = "Inicia sesión para administrar tu perfil y credenciales.";
             }
         };
 
-        window.cargarBarberosCloud = async function() {
+        window.cargarDirectorioGlobal = async function() {
             const contenedor = document.getElementById('listaBarberos');
-            contenedor.innerHTML = '<p style="text-align: center; color: var(--gold-light);">Buscando barberos en la red global...</p>';
+            contenedor.innerHTML = '<p style="text-align: center; color: var(--gold-light);">Buscando profesionales y barberías cercanos...</p>';
 
             try {
+                await window.inicializarDatosMuestra();
                 const querySnapshot = await getDocs(collection(db, "barberos"));
                 contenedor.innerHTML = '';
 
                 if (querySnapshot.empty) {
-                    contenedor.innerHTML = '<p style="text-align: center; color: var(--text-muted); grid-column: 1/-1;">No hay barberos registrados todavía. ¡Sé el primero!</p>';
+                    contenedor.innerHTML = '<p style="text-align: center; color: var(--text-muted);">No hay registros disponibles por el momento.</p>';
                     return;
                 }
 
-                querySnapshot.forEach((doc) => {
-                    const b = doc.data();
+                querySnapshot.forEach((docSnap) => {
+                    const b = docSnap.data();
                     const card = document.createElement('div');
                     card.className = 'barber-card-mobile';
+                    
+                    const tipoEtiqueta = b.tipo === 'barberia' ? '🏛️ Barbería Comercial' : '✂️ Barbero Independiente';
+                    const estrellasHTML = '★'.repeat(Math.floor(b.estrellas || 5)) + '☆'.repeat(5 - Math.floor(b.estrellas || 5));
+
                     card.innerHTML = `
                         <div class="barber-header-info">
-                            <h3>${b.nombre}</h3>
-                            <span>📍 ${b.direccion}</span>
+                            <div>
+                                <span style="font-size: 0.7rem; color: var(--gold); font-weight: 600; text-transform: uppercase;">${tipoEtiqueta}</span>
+                                <h3>${b.nombre}</h3>
+                            </div>
+                            <div style="text-align: right;">
+                                <span style="color: var(--gold); font-weight: 700;">${estrellasHTML}</span>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">${b.estrellas || 5.0} / 5.0</div>
+                            </div>
                         </div>
                         <div class="portfolio-container">
-                            <img src="${b.portfolio}" class="portfolio-img" alt="Trabajo de ${b.nombre}" onerror="this.src='https://via.placeholder.com/300x220?text=Cortate'">
+                            <img src="${b.portfolio}" class="portfolio-img" alt="Local/Trabajo de ${b.nombre}" onerror="this.src='https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=500'">
                         </div>
                         <div class="barber-body">
-                            <p>📞 Contacto: ${b.contacto}</p>
-                            ${b.pdfUrl ? `<p style="margin-top: 4px;"><a href="${b.pdfUrl}" target="_blank" style="color: var(--gold); font-size: 0.8rem; text-decoration: underline;">📄 Ver Certificado de Antecedentes Verificado</a></p>` : ''}
-                            <button class="primary-btn" style="margin-top: 12px; padding: 0.7rem; font-size: 0.85rem;" onclick="alert('Solicitud enviada a ${b.nombre}. Se pondrá en contacto pronto.')">Solicitar Servicio a Domicilio</button>
+                            <p>📍 <b>Ubicación:</b> ${b.direccion}</p>
+                            <p>⏱️ <b>Tiempo estimado:</b> Aprox. ${b.distanciaMinutos || 15} minutos</p>
+                            <p>📞 <b>Contacto:</b> ${b.contacto}</p>
+                            ${b.pdfUrl ? `<p style="margin-top: 6px;"><a href="${b.pdfUrl}" target="_blank" style="color: var(--gold); font-size: 0.8rem; text-decoration: underline;">📄 Ver Certificado de Antecedentes Verificado</a></p>` : ''}
+                            <button class="primary-btn" style="margin-top: 12px; padding: 0.7rem; font-size: 0.85rem;" onclick="alert('Solicitud enviada a ${b.nombre}. Se pondrá en contacto a la brevedad.')">Solicitar Servicio a Domicilio</button>
                         </div>
                     `;
                     contenedor.appendChild(card);
                 });
             } catch (error) {
-                console.error("Error cargando barberos:", error);
-                contenedor.innerHTML = '<p style="text-align: center; color: var(--danger);">Error al conectar con la base de datos.</p>';
+                console.error("Error cargando directorio:", error);
+                contenedor.innerHTML = '<p style="text-align: center; color: var(--danger);">Error al sincronizar con la red global.</p>';
             }
         };
 
         window.onload = function() {
-            window.cargarBarberosCloud();
+            window.cargarDirectorioGlobal();
             window.actualizarInterfazPerfil();
+            window.inicializarTemaAutomatico();
         };
     </script>
 
     <style>
+        /* Variables de Tema Claro y Oscuro */
         :root {
             --bg-color: #0b0b0b;
             --card-bg: #161616;
@@ -277,6 +298,20 @@
             --text-muted: #999999;
             --border-color: #262626;
             --danger: #ff4d4d;
+            --header-bg: #000000;
+        }
+
+        [data-theme="light"] {
+            --bg-color: #f4f4f6;
+            --card-bg: #ffffff;
+            --gold: #b3922e;
+            --gold-light: #d4af37;
+            --gold-dark: #8c7220;
+            --text-main: #1a1a1a;
+            --text-muted: #666666;
+            --border-color: #dedede;
+            --danger: #d93838;
+            --header-bg: #ffffff;
         }
 
         * {
@@ -285,6 +320,7 @@
             padding: 0;
             font-family: 'Montserrat', sans-serif;
             -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
 
         body {
@@ -293,14 +329,16 @@
             min-height: 100vh;
             display: flex;
             flex-direction: column;
-            padding-bottom: 70px;
+            padding-bottom: 75px;
         }
 
         header {
-            background-color: #000000;
+            background-color: var(--header-bg);
             border-bottom: 1px solid var(--border-color);
-            padding: 1rem;
-            text-align: center;
+            padding: 0.9rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             position: sticky;
             top: 0;
             z-index: 100;
@@ -309,8 +347,19 @@
         .logo {
             font-family: 'Playfair Display', serif;
             color: var(--gold);
-            font-size: 1.5rem;
-            letter-spacing: 3px;
+            font-size: 1.4rem;
+            letter-spacing: 2px;
+        }
+
+        .theme-toggle-btn {
+            background: none;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            font-weight: 500;
         }
 
         main {
@@ -327,11 +376,11 @@
 
         .view.active {
             display: block;
-            animation: fadeIn 0.3s ease-in-out;
+            animation: fadeIn 0.25s ease-in-out;
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
+            from { opacity: 0; transform: translateY(4px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
@@ -339,7 +388,7 @@
             font-family: 'Playfair Display', serif;
             color: var(--gold);
             margin-bottom: 1rem;
-            font-size: 1.4rem;
+            font-size: 1.35rem;
         }
 
         .search-box-mobile, .form-box-mobile {
@@ -348,28 +397,28 @@
             border-radius: 12px;
             padding: 1rem;
             margin-bottom: 1.5rem;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
         }
 
         .input-group-mobile {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            margin-bottom: 10px;
+            gap: 6px;
+            margin-bottom: 12px;
         }
 
         input, textarea, select {
-            background: #0f0f0f;
-            border: 1px solid #333;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
             color: var(--text-main);
-            padding: 0.9rem;
+            padding: 0.85rem;
             border-radius: 8px;
             font-size: 0.95rem;
             outline: none;
             width: 100%;
         }
 
-        input:focus, textarea:focus {
+        input:focus, textarea:focus, select:focus {
             border-color: var(--gold);
         }
 
@@ -383,11 +432,10 @@
             cursor: pointer;
             width: 100%;
             font-size: 1rem;
-            letter-spacing: 0.5px;
         }
 
         button.danger-btn {
-            background: #8B0000;
+            background: #a82020;
             color: #fff;
             border: none;
             font-weight: 600;
@@ -410,30 +458,26 @@
             border: 1px solid var(--border-color);
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
 
         .barber-header-info {
-            padding: 1rem;
+            padding: 0.9rem 1rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid #222;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .barber-header-info h3 {
-            color: var(--gold);
-            font-size: 1.1rem;
-        }
-
-        .barber-header-info span {
-            font-size: 0.8rem;
-            color: var(--text-muted);
+            color: var(--text-main);
+            font-size: 1.05rem;
+            margin-top: 2px;
         }
 
         .portfolio-container {
             width: 100%;
-            height: 220px;
+            height: 200px;
             background: #000;
         }
 
@@ -453,44 +497,17 @@
             margin-bottom: 0.4rem;
         }
 
-        .segmented-control {
-            display: flex;
-            background: #111;
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 4px;
-            margin-bottom: 1.5rem;
-        }
-
-        .segmented-btn {
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: var(--text-muted);
-            padding: 0.7rem;
-            font-weight: 600;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.2s;
-        }
-
-        .segmented-btn.active {
-            background: var(--gold);
-            color: #000;
-        }
-
         /* Barra de navegación inferior móvil */
         nav.bottom-nav {
             position: fixed;
             bottom: 0;
             left: 0;
             width: 100%;
-            background: #080808;
+            background: var(--header-bg);
             border-top: 1px solid var(--border-color);
             display: flex;
             justify-content: space-around;
-            padding: 0.6rem 0;
+            padding: 0.5rem 0;
             z-index: 1000;
         }
 
@@ -501,15 +518,15 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            font-size: 0.75rem;
+            font-size: 0.72rem;
             cursor: pointer;
             gap: 3px;
             flex: 1;
         }
 
         .nav-item svg {
-            width: 22px;
-            height: 22px;
+            width: 20px;
+            height: 20px;
             fill: currentColor;
         }
 
@@ -518,11 +535,28 @@
         }
 
         .file-upload-box {
-            border: 1px dashed #444;
-            padding: 1rem;
+            border: 1px dashed var(--border-color);
+            padding: 0.8rem;
             border-radius: 8px;
             text-align: center;
-            background: #0f0f0f;
+            background: var(--bg-color);
+        }
+
+        /* Banner de instalación PWA flotante */
+        #pwaBanner {
+            display: none;
+            position: fixed;
+            bottom: 65px;
+            left: 10px;
+            right: 10px;
+            background: var(--card-bg);
+            border: 1px solid var(--gold);
+            padding: 10px 15px;
+            border-radius: 10px;
+            z-index: 2000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            align-items: center;
+            justify-content: space-between;
         }
     </style>
 </head>
@@ -530,76 +564,81 @@
 
     <header>
         <div class="logo">CORTATE</div>
+        <button class="theme-toggle-btn" onclick="alternarTemaManual()">🌓 Tema</button>
     </header>
 
+    <!-- Banner flotante para instalar PWA -->
+    <div id="pwaBanner">
+        <span style="font-size: 0.82rem; color: var(--text-main);">📲 Instala <b>Cortate</b> en tu dispositivo para un acceso rápido.</span>
+        <button onclick="instalarPwaApp()" style="background: var(--gold); color: #000; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.8rem; cursor: pointer;">Instalar</button>
+    </div>
+
     <main>
-        <!-- VISTA HOME / BUSCADOR MÓVIL -->
+        <!-- VISTA HOME / DIRECTORIO -->
         <section id="home" class="view active">
-            <h1>Servicios Cercanos</h1>
+            <h1>Servicios y Locales Cercanos</h1>
             
             <div class="search-box-mobile">
                 <div class="input-group-mobile">
-                    <input type="text" id="direccionClienteInput" placeholder="¿Dónde estás ubicado?">
+                    <input type="text" id="direccionClienteInput" placeholder="¿Dónde estás ubicado para buscar servicios?">
                 </div>
                 <button class="primary-btn" onclick="obtenerUbicacionGPS()">📍 Usar mi ubicación GPS actual</button>
                 <p id="statusUbicacion" style="color: var(--gold-light); font-size: 0.75rem; margin-top: 8px; text-align: center;"></p>
             </div>
 
-            <h2>Barberos Globales Disponibles</h2>
+            <h2>Red Global (Barberos y Barberías)</h2>
             <div id="listaBarberos" class="barbers-feed"></div>
         </section>
 
-        <!-- VISTA MI PERFIL (NUEVA SECCIÓN CENTRAL) -->
+        <!-- VISTA MI PERFIL -->
         <section id="perfil" class="view">
-            <h1>Gestión de Perfil</h1>
+            <h1>Mi Cuenta y Perfil</h1>
             <p id="perfilInfoText" style="color: var(--gold-light); font-size: 0.85rem; margin-bottom: 1rem; text-align: center;"></p>
 
-            <!-- CONTENEDOR DE LOGIN SI NO ESTÁ LOGUEADO -->
             <div id="loginBox" class="form-box-mobile">
                 <h3 style="color: var(--gold); margin-bottom: 1rem; font-size: 1.1rem;">Iniciar Sesión</h3>
                 <form onsubmit="window.loginUsuario(event)">
                     <div class="input-group-mobile">
-                        <label style="color: var(--gold); font-size: 0.85rem;">Tipo de Usuario</label>
+                        <label style="font-size: 0.85rem;">Tipo de Cuenta</label>
                         <select id="loginTipo">
                             <option value="cliente">Cliente</option>
-                            <option value="barbero">Barbero</option>
+                            <option value="barbero">Barbero / Barbería</option>
                         </select>
                     </div>
                     <div class="input-group-mobile">
-                        <label style="color: var(--gold); font-size: 0.85rem;">Teléfono / Contacto</label>
-                        <input type="text" id="loginContacto" required placeholder="Tu teléfono registrado">
+                        <label style="font-size: 0.85rem;">Teléfono / Contacto</label>
+                        <input type="text" id="loginContacto" required placeholder="Tu número registrado">
                     </div>
                     <div class="input-group-mobile">
-                        <label style="color: var(--gold); font-size: 0.85rem;">Contraseña</label>
+                        <label style="font-size: 0.85rem;">Contraseña</label>
                         <input type="password" id="loginPassword" required placeholder="••••••••">
                     </div>
-                    <button type="submit" class="primary-btn" style="margin-top: 0.5rem;">Entrar a mi cuenta</button>
+                    <button type="submit" class="primary-btn" style="margin-top: 0.5rem;">Ingresar a la Plataforma</button>
                 </form>
             </div>
 
-            <!-- CONTENEDOR DE EDICIÓN DE PERFIL SI YA ESTÁ LOGUEADO -->
             <div id="editBox" class="form-box-mobile" style="display: none;">
-                <h3 style="color: var(--gold); margin-bottom: 1rem; font-size: 1.1rem;">Editar Mis Datos</h3>
+                <h3 style="color: var(--gold); margin-bottom: 1rem; font-size: 1.1rem;">Configuración de Perfil</h3>
                 <form onsubmit="window.guardarCambiosPerfil(event)">
                     <div class="input-group-mobile">
-                        <label style="color: var(--gold); font-size: 0.85rem;">Nombre de Usuario / Marca</label>
+                        <label style="font-size: 0.85rem;">Nombre / Marca Comercial</label>
                         <input type="text" id="editNombre" required>
                     </div>
                     <div class="input-group-mobile">
-                        <label style="color: var(--gold); font-size: 0.85rem;">Teléfono de Contacto</label>
+                        <label style="font-size: 0.85rem;">Teléfono de Contacto</label>
                         <input type="text" id="editContacto" required>
                     </div>
                     <div class="input-group-mobile">
-                        <label style="color: var(--gold); font-size: 0.85rem;">Dirección / Zona</label>
+                        <label style="font-size: 0.85rem;">Zona / Dirección</label>
                         <input type="text" id="editDireccion" required>
                     </div>
                     <div class="input-group-mobile" id="editPortfolioGroup">
-                        <label style="color: var(--gold); font-size: 0.85rem;">URL de Foto de Portafolio</label>
-                        <input type="url" id="editPortfolio" placeholder="https://link-de-tu-foto.jpg">
+                        <label style="font-size: 0.85rem;">URL de Foto de Portafolio / Local</label>
+                        <input type="url" id="editPortfolio">
                     </div>
                     <div class="input-group-mobile">
-                        <label style="color: var(--gold); font-size: 0.85rem;">Nueva Contraseña (Opcional)</label>
-                        <input type="password" id="editPassword" placeholder="Déjalo en blanco para no cambiarla">
+                        <label style="font-size: 0.85rem;">Cambiar Contraseña (Opcional)</label>
+                        <input type="password" id="editPassword" placeholder="Dejar en blanco para conservar actual">
                     </div>
                     <button type="submit" class="primary-btn" style="margin-top: 0.5rem;">Guardar Cambios</button>
                 </form>
@@ -607,70 +646,55 @@
             </div>
         </section>
 
-        <!-- VISTA REGISTRO -->
+        <!-- VISTA REGISTRO GENERAL -->
         <section id="registro" class="view">
-            <h1>Registro Online</h1>
+            <h1>Registro de Nuevo Usuario</h1>
             
-            <div class="segmented-control">
-                <button class="segmented-btn active" id="btnTabCliente" onclick="cambiarTipoRegistro('cliente')">Cliente</button>
-                <button class="segmented-btn" id="btnTabBarbero" onclick="cambiarTipoRegistro('barbero')">Barbero</button>
-            </div>
+            <form id="formRegistroGeneral" onsubmit="window.registrarUsuarioCloud(event)" class="form-box-mobile">
+                <div class="input-group-mobile">
+                    <label style="font-size: 0.85rem; color: var(--gold);">Tipo de Registro</label>
+                    <select id="regTipoSelector" onchange="ajustarCamposRegistro(this.value)">
+                        <option value="cliente">Cliente (Busco servicios)</option>
+                        <option value="barbero">Barbero Independiente</option>
+                        <option value="barberia">Barbería (Local comercial físico)</option>
+                    </select>
+                </div>
+                <div class="input-group-mobile">
+                    <label style="font-size: 0.85rem;">Nombre Completo o Nombre del Local</label>
+                    <input type="text" id="regNombre" required placeholder="Ej. Juan Pérez / Estilo Urbano">
+                </div>
+                <div class="input-group-mobile">
+                    <label style="font-size: 0.85rem;">Teléfono / WhatsApp</label>
+                    <input type="text" id="regContacto" required placeholder="+54 9 11...">
+                </div>
+                <div class="input-group-mobile">
+                    <label style="font-size: 0.85rem;">Dirección o Zona de Cobertura</label>
+                    <input type="text" id="regDireccion" required placeholder="Ej. Barrio Norte, CABA">
+                </div>
 
-            <!-- FORMULARIO CLIENTE -->
-            <form id="formCliente" onsubmit="window.registrarClienteCloud(event)" class="form-box-mobile">
-                <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Nombre y Apellido</label>
-                    <input type="text" id="cliNombre" required placeholder="Ej. Lucas Gómez">
-                </div>
-                <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Datos de Contacto</label>
-                    <input type="text" id="cliContacto" required placeholder="Teléfono celular">
-                </div>
-                <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Dirección Habitual</label>
-                    <input type="text" id="cliDireccion" required placeholder="Calle y número">
-                </div>
-                <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Contraseña</label>
-                    <input type="password" id="cliPassword" required placeholder="••••••••">
-                </div>
-                <button type="submit" id="btnRegCli" class="primary-btn" style="margin-top: 1rem;">Crear Cuenta de Cliente</button>
-            </form>
-
-            <!-- FORMULARIO BARBERO -->
-            <form id="formBarbero" onsubmit="window.registrarBarberoCloud(event)" class="form-box-mobile" style="display: none;">
-                <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Nombre Artístico / Marca</label>
-                    <input type="text" id="barNombre" required placeholder="Ej. Fade Master Studio">
-                </div>
-                <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Teléfono de Contacto</label>
-                    <input type="text" id="barContacto" required placeholder="Ej. +54 9 11...">
-                </div>
-                <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Zona de Cobertura</label>
-                    <input type="text" id="barDireccion" required placeholder="Ej. Zona Norte / Belgrano">
-                </div>
-                <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Antecedentes Penales (PDF)</label>
-                    <div class="file-upload-box">
-                        <input type="file" id="barPdf" accept=".pdf" required style="border: none; background: transparent; padding: 0;">
+                <div id="camposExtraProfesional" style="display: none;">
+                    <div class="input-group-mobile">
+                        <label style="font-size: 0.85rem;">Certificado de Antecedentes (PDF)</label>
+                        <div class="file-upload-box">
+                            <input type="file" id="regPdf" accept=".pdf" style="border: none; background: transparent; padding: 0;">
+                        </div>
+                    </div>
+                    <div class="input-group-mobile">
+                        <label style="font-size: 0.85rem;">Foto Principal / Portafolio (URL)</label>
+                        <input type="url" id="regPortfolio" placeholder="https://link-a-tu-foto.jpg">
                     </div>
                 </div>
+
                 <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Link de Portafolio (Foto URL)</label>
-                    <input type="url" id="barPortfolio" required placeholder="https://link-a-tu-foto.jpg">
+                    <label style="font-size: 0.85rem;">Contraseña</label>
+                    <input type="password" id="regPassword" required placeholder="••••••••">
                 </div>
-                <div class="input-group-mobile">
-                    <label style="color: var(--gold); font-size: 0.85rem;">Contraseña</label>
-                    <input type="password" id="barPassword" required placeholder="••••••••">
-                </div>
-                <button type="submit" id="btnRegBar" class="primary-btn" style="margin-top: 1rem;">Unirme como Barbero</button>
+                <button type="submit" id="btnRegAccion" class="primary-btn" style="margin-top: 1rem;">Completar Registro</button>
             </form>
         </section>
     </main>
 
-    <!-- BARRA DE NAVEGACIÓN INFERIOR CON 3 PESTAÑAS -->
+    <!-- NAVEGACIÓN INFERIOR -->
     <nav class="bottom-nav">
         <button class="nav-item active" id="navHome" onclick="navegarApp('home')">
             <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
@@ -687,6 +711,7 @@
     </nav>
 
     <script>
+        // Lógica de Navegación
         function navegarApp(vistaId) {
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -695,30 +720,56 @@
             document.getElementById('nav' + vistaId.charAt(0).toUpperCase() + vistaId.slice(1)).classList.add('active');
             
             window.scrollTo(0, 0);
-            if(vistaId === 'home') {
-                window.cargarBarberosCloud();
-            }
-            if(vistaId === 'perfil') {
-                window.actualizarInterfazPerfil();
+            if(vistaId === 'home') window.cargarDirectorioGlobal();
+            if(vistaId === 'perfil') window.actualizarInterfazPerfil();
+        }
+
+        function ajustarCamposRegistro(tipo) {
+            const extra = document.getElementById('camposExtraProfesional');
+            if (tipo === 'cliente') {
+                extra.style.display = 'none';
+            } else {
+                extra.style.display = 'block';
             }
         }
 
-        function cambiarTipoRegistro(tipo) {
-            const btnCliente = document.getElementById('btnTabCliente');
-            const btnBarbero = document.getElementById('btnTabBarbero');
-            const formCliente = document.getElementById('formCliente');
-            const formBarbero = document.getElementById('formBarbero');
-
-            if (tipo === 'cliente') {
-                btnCliente.classList.add('active');
-                btnBarbero.classList.remove('active');
-                formCliente.style.display = 'block';
-                formBarbero.style.display = 'none';
+        // Sistema de Tema Claro / Oscuro Inteligente y Manual
+        function inicializarTemaAutomatico() {
+            const savedTheme = localStorage.getItem('cortate_theme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
             } else {
-                btnBarbero.classList.add('active');
-                btnCliente.classList.remove('active');
-                formBarbero.style.display = 'block';
-                formCliente.style.display = 'none';
+                const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+                if (prefersLight) {
+                    document.documentElement.setAttribute('data-theme', 'light');
+                }
+            }
+        }
+
+        function alternarTemaManual() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const nuevo = current === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', nuevo);
+            localStorage.setItem('cortate_theme', nuevo);
+        }
+
+        // Detección de instalación PWA
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('pwaBanner').style.display = 'flex';
+        });
+
+        function instalarPwaApp() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        document.getElementById('pwaBanner').style.display = 'none';
+                    }
+                    deferredPrompt = null;
+                });
             }
         }
 
@@ -727,19 +778,19 @@
             const inputDir = document.getElementById('direccionClienteInput');
 
             if (!navigator.geolocation) {
-                status.textContent = "Tu dispositivo no soporta geolocalización.";
+                status.textContent = "Tu navegador no soporta geolocalización.";
                 return;
             }
 
-            status.textContent = "Buscando señal GPS...";
+            status.textContent = "Obteniendo señal GPS...";
 
             navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    inputDir.value = "📍 Ubicación GPS actual detectada";
-                    status.textContent = "¡Ubicación sincronizada!";
+                () => {
+                    inputDir.value = "📍 Posición GPS actual sincronizada";
+                    status.textContent = "¡Ubicación detectada con éxito!";
                 },
                 () => {
-                    status.textContent = "Error al obtener GPS. Ingresa tu zona manualmente.";
+                    status.textContent = "No se pudo obtener el GPS. Escribe tu ubicación manualmente.";
                 }
             );
         }
